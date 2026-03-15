@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard</title>
+
+    <!-- Bootstrap CSS for styling -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Inline CSS for background and styling the layout -->
+    <style>
+        body {
+            background: url("/static/images/hospital_bg.jpg") no-repeat center center fixed;
+            background-size: cover;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem;
+            font-family: Arial, sans-serif;
+            color: #111;
+            position: relative;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255, 255, 255, 0.85); /* white overlay */
+            z-index: -1;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background-color: transparent;
+            padding: 1rem;
+            border-radius: 15px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+        }
+        table.table {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        h2, h4, h5 {
+            color: #222;
+            text-shadow: 0 1px 1px rgba(255,255,255,0.7);
+        }
+        a.btn-secondary {
+            border-radius: 20px;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container mt-5">
+    <h2 class="mb-4">Hospital Management System - Admin Dashboard</h2>
+
+    <!-- Displaying current date and day for which appointments are listed -->
+    <h4 class="mt-4">Appointments for {{ selected_date }} ({{ selected_day }})</h4>
+
+    <!-- Looping through time blocks (Morning, Afternoon, etc.) -->
+    {% for block, patients in patients_by_block.items() %}
+        <h5>{{ block }}</h5>
+
+        <!-- Table listing patients for each time block -->
+        <table class="table table-bordered table-striped">
+            <thead class="table-dark">
+                <tr>
+                    <th>#</th>
+                    <th>MRN</th>
+                    <th>Name</th>
+                    <th>Complaint</th>
+                    <th>Severity (Editable)</th>
+                    <th>Arrival Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for patient in patients %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ patient['mrn'] }}</td>
+                    <td>{{ patient['name'] }}</td>
+                    <td>{{ patient['complaint'] }}</td>
+
+                    <!-- Editable dropdown to change severity level -->
+                    <td>
+                        <select class="form-select" onchange="updateSeverity('{{ patient['mrn'] }}', '{{ patient['arrival_time'] }}', this.value)">
+                            <option {% if patient['priority'] == 'Critical' %}selected{% endif %}>Critical</option>
+                            <option {% if patient['priority'] == 'Moderate' %}selected{% endif %}>Moderate</option>
+                            <option {% if patient['priority'] == 'Low' %}selected{% endif %}>Low</option>
+                        </select>                            
+                    </td>
+                    <td>{{ patient['arrival_time'] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endfor %}
+
+    <!-- Pagination Buttons -->
+    <div class="mt-4 d-flex justify-content-between">
+        {% if prev_date %}
+            <a href="/admin?date={{ prev_date }}" class="btn btn-outline-primary">&laquo; Previous Day</a>
+        {% else %}
+            <span></span>
+        {% endif %}
+        
+        {% if next_date %}
+            <a href="/admin?date={{ next_date }}" class="btn btn-outline-primary">Next Day &raquo;</a>
+        {% else %}
+            <span></span>
+        {% endif %}
+    </div>
+
+    <!-- Weekly Severity Chart Section -->
+    <div class="mt-5 bg-white p-4 rounded shadow">
+        <h5>Patient Summary Overview</h5>
+
+        <!-- Dropdown to choose weekday -->
+        <div class="mb-3">
+            <label for="weekday-select"><strong>Select Weekday:</strong></label>
+            <select id="weekday-select" class="form-select w-25" onchange="updateWeekday(this.value)">
+                {% for day in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}
+                    <option value="{{ day }}" {% if day == default_peak_day %}selected{% endif %}>{{ day }}</option>
+                {% endfor %}
+            </select>            
+        </div>
+
+        <!-- Display selected weekday and patient count -->
+        <p><strong>Total Patients on <span id="selected-day">{{ default_peak_day }}</span>:</strong>
+            <span id="total-patients">{{ weekday_patient_counts[default_peak_day] }}</span>
+        </p>
+        
+        <div>
+            <strong>📈 Peak Day:</strong> {{ default_peak_day }}<br>
+            <strong>⏰ Peak Time:</strong> {{ peak_time }}
+        </div>
+
+        <!-- Canvas element where bar chart will be rendered -->
+        <canvas id="weekdaySeverityChart" height="100"></canvas>
+    </div>
+
+    <!-- Link to go back to patient form -->
+    <a href="/" class="btn btn-secondary mt-4">Back to Patient Form</a>
+</div>
+
+<!-- Load Chart.js library for drawing severity chart -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    // Fetching data from Flask context
+    const severityData = {{ weekday_severity_data | tojson }};
+    const patientCounts = {{ weekday_patient_counts | tojson }};
+    const ctx = document.getElementById('weekdaySeverityChart').getContext('2d');
+    let weekdayChart;
+
+    // Function to draw bar chart for given weekday
+    function drawChart(day) {
+        const data = severityData[day] || { Critical: 0, Moderate: 0, Low: 0 };
+
+        if (weekdayChart) weekdayChart.destroy(); // Redraw chart on change
+
+        weekdayChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Critical', 'Moderate', 'Low'],
+                datasets: [{
+                    label: 'Number of Patients',
+                    data: [data.Critical, data.Moderate, data.Low],
+                    backgroundColor: ['#dc3545', '#ffc107', '#0d6efd']  // red, yellow, blue
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    }
+                }
+            }
+        });
+
+        // Update text below the chart
+        document.getElementById("selected-day").innerText = day;
+        document.getElementById("total-patients").innerText = patientCounts[day] || 0;
+    }
+
+    // Triggered on dropdown change
+    function updateWeekday(day) {
+        drawChart(day);
+    }
+
+    // Initialize chart with default day on load
+    window.onload = () => {
+        drawChart("{{ default_peak_day }}");
+    };
+
+    // AJAX call to update patient severity
+    function updateSeverity(mrn, arrivalTime, newPriority) {
+        fetch('/update_severity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mrn: mrn, arrival_time: arrivalTime, priority: newPriority })
+        }).then(res => {
+            if (res.ok) {
+                location.reload();  // Refresh page to reflect changes
+            } else {
+                alert("Failed to update severity.");
+            }
+        });
+    }
+</script>
+</body>
+</html>

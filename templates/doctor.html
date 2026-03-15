@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Doctor Screen</title>
+
+    <!-- Bootstrap CSS for layout and design -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Custom styles for background, layout, and responsiveness -->
+    <style>
+        body {
+            background: url("/static/images/hospital_bg.jpg") no-repeat center center fixed;
+            background-size: cover;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem;
+            font-family: Arial, sans-serif;
+            color: #111;
+            position: relative;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255, 255, 255, 0.85); /* Soft overlay */
+            z-index: -1;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: transparent;
+            padding: 1rem;
+            border-radius: 15px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+        }
+        h2, .alert {
+            color: #222;
+            text-shadow: 0 1px 1px rgba(255,255,255,0.7);
+        }
+        .btn-outline-primary, .btn-outline-success, .btn-outline-warning {
+            border-radius: 20px;
+        }
+        table.table {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* Real-time notification banner for severity updates */
+        #severity-notification {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            text-align: center;
+            z-index: 1000;
+        }
+    </style>
+</head>
+
+<body>
+
+<!-- Real-time severity change banner -->
+<div id="severity-notification"></div>
+
+<div class="container mt-5">
+
+    <!-- Navigation buttons between Patient, Admin, and Doctor screens -->
+    <div class="mb-4 text-center">
+        <a href="/" class="btn btn-outline-primary mx-1">Patient</a>
+        <a href="/admin" class="btn btn-outline-success mx-1">Admin</a>
+        <a href="/doctor" class="btn btn-outline-warning mx-1">Doctor</a>
+    </div>
+
+    <h2 class="mb-4">Doctor Screen</h2>
+
+    <!-- Display number of patients left in queue -->
+    <div class="alert alert-info mt-3" role="alert">
+        Patients Remaining: <strong>{{ remaining_count }}</strong>
+    </div>    
+
+    {% if patient %}
+    <!-- Table showing current patient details -->
+    <table class="table table-bordered mb-4">
+        <thead class="table-dark">
+            <tr>
+                <th>MRN</th>
+                <th>Patient Name</th>
+                <th>Severity (Predicted)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{ patient['mrn'] }}</td>
+                <td>{{ patient['name'] }}</td>
+                <td>{{ patient['priority'] }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Form for doctor to record prescriptions and tests -->
+    <form method="POST" action="/doctor">
+        <div class="row mb-3">
+            <div class="col">
+                <label class="form-label">Medicines</label>
+                <input type="text" name="medicine" class="form-control" placeholder="e.g., Panadol Extra">
+            </div>
+            <div class="col">
+                <label class="form-label">Order Tests</label>
+                <input type="text" name="test" class="form-control" placeholder="e.g., Blood Test">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Submit</button>
+    </form>
+
+    {% else %}
+    <!-- If there is no patient data, show warning -->
+    <div class="alert alert-warning">No patient data available.</div>
+    {% endif %}
+</div>
+
+<!-- Include Socket.IO library for real-time communication -->
+<script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+<script>
+const socket = io();  // Initialize WebSocket connection
+const notifyDiv = document.getElementById('severity-notification');
+
+// When admin updates severity, notify the doctor in real-time
+socket.on('severity_updated', function(data) {
+    notifyDiv.innerText = `Admin changed the severity of patient with MRN: ${data.mrn} to ${data.priority}`;
+    notifyDiv.style.display = 'block';
+
+    // Auto-hide notification after 5 seconds
+    setTimeout(() => {
+        notifyDiv.style.display = 'none';
+    }, 5000);
+});
+</script>
+
+</body>
+</html>
